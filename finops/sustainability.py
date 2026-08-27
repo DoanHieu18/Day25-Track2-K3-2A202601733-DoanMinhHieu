@@ -45,3 +45,49 @@ def tokens_per_watt(total_tokens: int, wh: float, seconds: float = 1.0) -> float
     """Energy efficiency of serving: tokens per watt (higher is better)."""
     watts = (wh * 3600.0) / seconds if seconds > 0 else 0.0
     return total_tokens / watts if watts > 0 else 0.0
+
+
+def region_cost_and_carbon_matrix(wh: float) -> list[dict]:
+    """Generate comparative matrix of carbon emissions and electricity cost across all regions."""
+    out = []
+    for reg in REGION_CARBON:
+        c_g = carbon_g(wh, reg)
+        cost = energy_cost_usd(wh, reg)
+        out.append({
+            "region": reg,
+            "carbon_g": round(c_g, 2),
+            "electricity_cost_usd": round(cost, 4),
+            "carbon_intensity_g_kwh": REGION_CARBON[reg],
+            "electricity_price_kwh": REGION_PRICE_KWH[reg],
+        })
+    return out
+
+
+def carbon_aware_schedule(
+    total_energy_wh: float,
+    baseline_region: str = "us-east-1",
+    target_region: str = "europe-north1",
+) -> dict:
+    """Calculate carbon and electricity cost reduction when migrating workloads to a greener region."""
+    base_carbon = carbon_g(total_energy_wh, baseline_region)
+    target_carbon = carbon_g(total_energy_wh, target_region)
+    carbon_saved = base_carbon - target_carbon
+    carbon_reduction_pct = (carbon_saved / base_carbon * 100.0) if base_carbon > 0 else 0.0
+
+    base_cost = energy_cost_usd(total_energy_wh, baseline_region)
+    target_cost = energy_cost_usd(total_energy_wh, target_region)
+    cost_saved = base_cost - target_cost
+
+    return {
+        "baseline_region": baseline_region,
+        "target_region": target_region,
+        "energy_kwh": round(total_energy_wh / 1000.0, 2),
+        "baseline_carbon_kg": round(base_carbon / 1000.0, 2),
+        "target_carbon_kg": round(target_carbon / 1000.0, 2),
+        "carbon_saved_kg": round(carbon_saved / 1000.0, 2),
+        "carbon_reduction_pct": round(carbon_reduction_pct, 1),
+        "baseline_cost_usd": round(base_cost, 2),
+        "target_cost_usd": round(target_cost, 2),
+        "cost_saved_usd": round(cost_saved, 2),
+    }
+
