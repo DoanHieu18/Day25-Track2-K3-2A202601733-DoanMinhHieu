@@ -36,7 +36,7 @@ def build_report(baseline_usd: float, optimized_usd: float, levers: dict,
 
 
 def savings_waterfall(levers: dict, path: str) -> str:
-    """Write a simple savings bar chart PNG. Returns the path. No-op if matplotlib absent."""
+    """Write a clean savings bar chart PNG with data labels. Returns the path. No-op if matplotlib absent."""
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -45,12 +45,25 @@ def savings_waterfall(levers: dict, path: str) -> str:
         return ""
     names = list(levers.keys())
     vals = [levers[n] for n in names]
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.bar(names, vals, color="#2e548a")
-    ax.set_ylabel("Savings (USD / month)")
-    ax.set_title("GPU cost savings by FinOps lever")
-    plt.xticks(rotation=20, ha="right")
+    fig, ax = plt.subplots(figsize=(9, 5))
+    colors = ["#1f77b4", "#2ca02c", "#ff7f0e", "#d62728"]
+    bars = ax.bar(names, vals, color=colors[:len(names)], edgecolor="#333333", linewidth=0.8, zorder=3)
+    ax.grid(axis="y", linestyle="--", alpha=0.5, zorder=0)
+    ax.set_ylabel("Savings (USD / month)", fontsize=11, fontweight="bold")
+    ax.set_title("GPU Cost Savings Breakdown by FinOps Lever (NimbusAI)", fontsize=13, fontweight="bold", pad=12)
+    plt.xticks(rotation=15, ha="right", fontsize=10)
+    
+    # Add data labels on top of bars
+    for bar in bars:
+        height = bar.get_height()
+        ax.annotate(f"${height:,.0f}",
+                    xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 4),  # 4 points vertical offset
+                    textcoords="offset points",
+                    ha="center", va="bottom", fontsize=10, fontweight="bold")
+
     plt.tight_layout()
-    fig.savefig(path, dpi=110)
+    fig.savefig(path, dpi=120)
     plt.close(fig)
     return path
+

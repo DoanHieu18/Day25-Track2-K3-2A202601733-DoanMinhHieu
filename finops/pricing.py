@@ -60,13 +60,40 @@ def break_even_utilization(discount_frac: float) -> float:
     return max(0.0, min(1.0, 1.0 - discount_frac))
 
 
-def recommend_tier(hours_per_day: float, interruptible: bool, reserved_discount: float = 0.45) -> str:
+def cache_is_worth_it(
+    avg_cache_reads: float,
+    write_cost_per_m: float,
+    read_discount: float = 0.10,
+    base_read_cost_per_m: float | None = None,
+) -> bool:
+    """Prompt caching is economically beneficial only when cumulative savings from reads exceed write cost.
+
+    Break-even: avg_cache_reads * (base_read_cost * (1 - read_discount)) > write_cost.
+    When base_read_cost is not provided, we assume standard base read price = write price.
+    """
+    if avg_cache_reads <= 0 or write_cost_per_m <= 0:
+        return False
+    base_read = write_cost_per_m if base_read_cost_per_m is None else base_read_cost_per_m
+    unit_saving_per_read = base_read * (1.0 - read_discount)
+    total_savings = avg_cache_reads * unit_saving_per_read
+    return total_savings > write_cost_per_m
+
+
+def recommend_tier(
+    hours_per_day: float,
+    interruptible: bool,
+    reserved_discount: float = 0.45,
+    gpu_type: str | None = None,
+    job_days: int | None = None,
+    interrupt_rate: float | None = None,
+) -> str:
     """Pick a purchasing tier from a workload's duty cycle + interruptibility.
 
-    DOCUMENTED simple policy (instructor extension point — swap in your own):
-      - interruptible & not 24/7  -> 'spot'      (checkpoint and ride the discount)
-      - duty cycle >= break-even  -> 'reserved'  (steady, high utilization)
-      - otherwise                 -> 'on_demand' (spiky / low duty)
+    Enhanced policy (supports Extensions 1 & purchasing optimization):
+      - If interruptible & not 24/7 (or low risk interruption): 'spot'
+      - If duration/commitment is short (< 30 days) and not interruptible, prefer on_demand unless steady 24/7
+      - If duty cycle >= break-even (and commitment makes sense): 'reserved'
+      - otherwise: 'on_demand'
     """
     duty = max(0.0, hours_per_day) / 24.0
     be = break_even_utilization(reserved_discount)

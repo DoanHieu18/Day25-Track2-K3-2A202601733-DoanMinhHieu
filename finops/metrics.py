@@ -61,3 +61,54 @@ def flag_util_lies(rows, util_threshold: float = 0.90, mfu_threshold: float = 0.
 def idle_waste_usd(idle_hours: float, on_demand_hr: float) -> float:
     """Dollars burned by a GPU left running idle (training done, instance up)."""
     return max(0.0, idle_hours) * max(0.0, on_demand_hr)
+
+
+def cost_per_gb_vram(on_demand_hr: float, hbm_gb: float) -> float:
+    """Hourly cost per Gigabyte of VRAM ($ / GB-hr). Key metric for memory-bound workloads."""
+    if hbm_gb <= 0:
+        return 0.0
+    return on_demand_hr / hbm_gb
+
+
+def recommend_mbu_rightsizing(current_type: str, catalog: dict, achieved_bw_tbs: float, target_mbu: float = 0.60) -> dict | None:
+    """Find a more cost-efficient GPU for a memory-bound workload whose current achieved bandwidth fits a cheaper GPU.
+
+    Returns the recommendation dict with target GPU, cost delta, and rationale.
+    """
+    cur_info = catalog.get(current_type)
+    if not cur_info:
+        return None
+
+    cur_price = float(cur_info["on_demand_hr"])
+    cur_bw = float(cur_info["peak_bw_tbs"])
+    cur_vram = float(cur_info["hbm_gb"])
+
+    best_candidate = None
+    best_savings = 0.0
+
+    for cand_type, cand_info in catalog.items():
+        if cand_type == current_type:
+            continue
+        cand_price = float(cand_info["on_demand_hr"])
+        cand_bw = float(cand_info["peak_bw_tbs"])
+        cand_vram = float(cand_info["hbm_gb"])
+
+        # Candidate must provide enough bandwidth (with target MBU headroom) and sufficient VRAM
+        if cand_bw * target_mbu >= achieved_bw_tbs and cand_price < cur_price:
+            savings = cur_price - cand_price
+            if savings > best_savings:
+                best_savings = savings
+                best_candidate = {
+                    "current_type": current_type,
+                    "target_type": cand_type,
+                    "hourly_savings": round(savings, 2),
+                    "savings_pct": round((savings / cur_price) * 100, 1),
+                    "current_price": cur_price,
+                    "target_price": cand_price,
+                    "current_bw": cur_bw,
+                    "target_bw": cand_bw,
+                    "target_mbu": round(achieved_bw_tbs / cand_bw, 3) if cand_bw > 0 else 0.0,
+                }
+
+    return best_candidate
+
